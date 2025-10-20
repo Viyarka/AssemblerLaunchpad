@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Touchpad 10x10 · Ensamblador Sonoro (Stack/Queue + Visual numérica)</title>
+  <style>
+    :root{
+      --bg: #0f1115; 
+      --panel: #151823; 
+      --pad: #1d2230; 
+      --pad-hover: #242b3d; 
+      --pad-active: #2f3a57; 
+      --accent: #7c9cff; 
+      --accent-2: #3ddc97;
+      --text: #e9edf1; 
+      --muted: #9aa4b2; 
+      --danger: #ff6b6b;
+      --warn: #ffde59;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+      --ok: #3bd671;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:linear-gradient(180deg,#0b0d12,#0f1115 20%); color:var(--text)}
+    .app{max-width:1200px; margin:24px auto; padding:16px}
+    header{display:flex; gap:12px; flex-wrap:wrap; align-items:center; background:var(--panel); border:1px solid #20273a; padding:14px; border-radius:var(--radius); box-shadow:var(--shadow)}
+    header h1{font-size:18px; margin:0 8px 0 0; letter-spacing:.3px; opacity:.95}
+    .tag{padding:6px 10px; background:#0c0f16; border:1px solid #1f2636; border-radius:999px; color:var(--muted)}
+    .spacer{flex:1}
+    .toggle{display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none}
+    .toggle input{width:18px; height:18px}
+    .btn{appearance:none; border:none; background:var(--pad); border:1px solid #24304b; color:var(--text); padding:10px 14px; border-radius:12px; cursor:pointer; transition:transform .03s ease, background .2s}
+    .btn:hover{background:var(--pad-hover)}
+    .btn:active{transform:scale(.98)}
+    .btn.accent{background:linear-gradient(180deg,#6c8dff,#5c7bff); border-color:#6c8dff}
+    .btn.danger{background:#2b1d22; border-color:#43202a; color:#ffb0b0}
+    .btn.ok{background:#173023; border-color:#234a36; color:#b5ffd1}
+    .grid-wrap{display:grid; grid-template-columns: 1fr 340px; gap:16px; margin-top:16px}
+    .grid{display:grid; grid-template-columns: repeat(10, 1fr); gap:8px; padding:14px; background:var(--panel); border:1px solid #20273a; border-radius:var(--radius); box-shadow:var(--shadow); min-height:640px}
+    .pad{position:relative; background:var(--pad); border:1px solid #24304b; border-radius:14px; height:0; padding-bottom:100%; cursor:pointer; overflow:hidden; transition:background .15s ease, transform .03s ease, border-color .2s}
+    .pad:hover{background:var(--pad-hover)}
+    .pad:active{transform:translateY(2px)}
+    .pad.active{background:var(--pad-active); border-color:#3b4770; box-shadow:inset 0 0 0 1px #4b5aa0}
+    .pad.selected{outline:2px solid var(--accent); outline-offset:2px}
+    .pad .content{position:absolute; inset:8px; display:flex; flex-direction:column; justify-content:space-between}
+    .pad .idx{font-size:12px; color:var(--muted)}
+    .pad .name{font-size:12px; color:#cfd6e1; line-height:1.2; word-break:break-word}
+    .pad .badges{display:flex; gap:6px; flex-wrap:wrap}
+    .badge{font-size:10px; padding:3px 6px; background:#0e1322; color:#aeb7c6; border:1px solid #1e2a45; border-radius:999px}
+
+    /* Luces para visual numérica */
+    .pad.light-green{background:#2eff6c !important; box-shadow:0 0 10px #2eff6c;}
+    .pad.light-yellow{background:#fff46a !important; box-shadow:0 0 10px #fff46a;}
+    .pad.light-red{background:#ff5050 !important; box-shadow:0 0 10px #ff5050;}
+
+    aside{background:var(--panel); border:1px solid #20273a; border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; display:flex; flex-direction:column; gap:12px}
+    aside h2{margin:4px 0 2px; font-size:16px}
+    .row{display:flex; gap:8px; align-items:center}
+    .row label{font-size:12px; color:var(--muted); width:110px}
+    .row .value{font-size:12px; color:#cfd6e1}
+    input[type="file"]{display:none}
+    select, input[type="number"], input[type="text"]{background:#0e1220; color:#e9edf1; border:1px solid #1f2636; border-radius:10px; padding:8px; width:100%}
+    .slider{appearance:none; width:100%; height:6px; border-radius:999px; background:#1a2133; outline:none}
+    .slider::-webkit-slider-thumb{appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer}
+    #consoleBox{background:#0e1220; border:1px solid #1f2636; border-radius:10px; padding:10px; height:150px; overflow-y:auto; font-family:monospace; white-space:pre-wrap;}
+    footer{margin-top:14px; text-align:center; color:var(--muted); font-size:12px}
+
+    /* --- Sección grande de visualización --- */
+    .viz{margin-top:18px; background:var(--panel); border:1px solid #20273a; border-radius:var(--radius); box-shadow:var(--shadow); padding:16px}
+    .viz h2{margin:0 0 12px 0; font-size:18px}
+    .viz .layout{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+
+    /* Pila visual */
+    .stack{background:#0e1220; border:1px solid #1f2636; border-radius:14px; padding:12px; min-height:260px; display:flex; align-items:flex-end; justify-content:center}
+    .stack .col{width:180px; min-height:220px; display:flex; flex-direction:column; justify-content:flex-end; gap:8px; position:relative}
+    .stack .item{background:#1c2538; border:1px solid #2b3b5e; border-radius:10px; padding:10px; text-align:center; font-weight:600; opacity:0; transform:translateY(20px); transition:transform .35s ease, opacity .35s ease}
+    .stack .item.enter{opacity:1; transform:translateY(0)}
+    .stack .item.exit{opacity:0; transform:translateY(-12px)}
+    .stack .label{position:absolute; top:8px; left:8px; font-size:12px; color:var(--muted)}
+
+    /* Cola visual */
+    .queue{background:#0e1220; border:1px solid #1f2636; border-radius:14px; padding:12px; min-height:260px; display:flex; align-items:center}
+    .queue .row{display:flex; gap:8px; align-items:flex-end; flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px}
+    .queue .item{flex:0 0 auto; min-width:60px; background:#1c2538; border:1px solid #2b3b5e; border-radius:10px; padding:10px; text-align:center; font-weight:600; opacity:0; transform:translateX(20px); transition:transform .35s ease, opacity .35s ease}
+    .queue .item.enter{opacity:1; transform:translateX(0)}
+    .queue .item.exit{opacity:0; transform:translateX(-20px)}
+
+    .exec-controls{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+
+    @media (max-width: 1020px){ .grid-wrap{grid-template-columns: 1fr} .viz .layout{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Touchpad 10×10 · Ensamblador Sonoro</h1>
+      <span class="tag" id="ctxState">Audio: detenido</span>
+      <div class="spacer"></div>
+      <label class="toggle"><input id="editMode" type="checkbox"/>Modo edición</label>
+      <button class="btn" id="globalStop">Parar todo</button>
+      <button class="btn danger" id="clearAll">Vaciar todos</button>
+    </header>
+
+    <div class="grid-wrap">
+      <section class="grid" id="padGrid" aria-label="Matriz 10x10 de pads"></section>
+      <aside>
+        <h2>Pad seleccionado</h2>
+        <div class="row"><label>Índice</label><div class="value" id="selIndex">—</div></div>
+        <div class="row"><label>Nombre sonido</label><div class="value" id="selName">—</div></div>
+        <div class="row"><label>Token (ASM)</label>
+          <select id="opcodeSelect">
+            <option value="">— elegir —</option>
+            <option value="PUSH">PUSH (pila)</option>
+            <option value="POP">POP (pila)</option>
+            <option value="ADD">ADD (pila)</option>
+            <option value="SUB">SUB (pila)</option>
+            <option value="ENQUEUE">ENQUEUE (cola)</option>
+            <option value="DEQUEUE">DEQUEUE (cola)</option>
+          </select>
+        </div>
+        <div class="row" id="argRow" style="display:none"><label>Valor</label><input id="argInput" type="number" step="1" placeholder="p. ej. 5" /></div>
+        <div class="row"><label>Duración</label><div class="value" id="selDur">—</div></div>
+
+        <div class="controls">
+          <input type="file" id="fileInput" accept="audio/*" />
+          <button class="btn accent" id="assignBtn">Cargar sonido</button>
+          <button class="btn" id="previewBtn">Pre-escuchar</button>
+          <button class="btn danger" id="removeBtn">Quitar</button>
+        </div>
+        <div class="row"><label>Volumen</label><input id="gainSlider" class="slider" type="range" min="0" max="1" step="0.01" value="1"></div>
+        <div class="row"><label>Velocidad</label><input id="rateSlider" class="slider" type="range" min="0.25" max="2" step="0.01" value="1"></div>
+        <div class="row"><label>Bucle</label><input id="loopChk" type="checkbox"></div>
+        <div class="row"><label>Detener al cargar</label><input id="stopOnNew" type="checkbox" checked></div>
+
+        <h2>Consola</h2>
+        <div id="consoleBox"></div>
+        <div class="exec-controls">
+          <button class="btn ok" id="playStep">▶ Ejecutar paso a paso</button>
+          <button class="btn" id="pauseStep" disabled>⏸ Pausar</button>
+          <button class="btn" id="nextStep">Paso siguiente</button>
+          <button class="btn danger" id="resetExec">Reiniciar ejecución</button>
+          <button class="btn danger" id="clearConsole">Limpiar consola</button>
+        </div>
+        <footer>Mini ensamblador: PUSH/POP/ADD/SUB/ENQUEUE/DEQUEUE</footer>
+      </aside>
+    </div>
+
+    <!-- Sección grande de visualización -->
+    <section class="viz">
+      <h2>Estructuras visuales</h2>
+      <div class="layout">
+        <div class="stack">
+          <div class="col" id="stackCol">
+            <div class="label">Pila (top ↑)</div>
+          </div>
+        </div>
+        <div class="queue">
+          <div class="row" id="queueRow"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+  // ======== Helpers DOM ========
+  function $(sel){ return document.querySelector(sel); }
+  function el(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
+
+  // ======== Referencias básicas ========
+  const GRID_SIZE=10; const totalPads=GRID_SIZE*GRID_SIZE;
+  const padGrid=$('#padGrid');
+  const editMode=$('#editMode');
+  const ctxState=$('#ctxState');
+  const selIndexEl=$('#selIndex');
+  const selNameEl=$('#selName');
+  const selDurEl=$('#selDur');
+  const fileInput=$('#fileInput');
+  const assignBtn=$('#assignBtn');
+  const previewBtn=$('#previewBtn');
+  const removeBtn=$('#removeBtn');
+  const gainSlider=$('#gainSlider');
+  const rateSlider=$('#rateSlider');
+  const loopChk=$('#loopChk');
+  const stopOnNew=$('#stopOnNew');
+  const globalStop=$('#globalStop');
+  const clearAll=$('#clearAll');
+  const consoleBox=$('#consoleBox');
+  const clearConsole=$('#clearConsole');
+  const playStep=$('#playStep');
+  const pauseStep=$('#pauseStep');
+  const nextStep=$('#nextStep');
+  const resetExec=$('#resetExec');
+  const opcodeSelect=$('#opcodeSelect');
+  const argRow=$('#argRow');
+  const argInput=$('#argInput');
+
+  const stackCol=$('#stackCol');
+  const queueRow=$('#queueRow');
+
+  // ======== Audio ========
+  let audioCtx=null; const masterGain={node:null};
+  function ensureAudioCtx(){
+    if(!audioCtx){
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      const g=audioCtx.createGain();
+      g.gain.value=1; g.connect(audioCtx.destination); masterGain.node=g; if(ctxState) ctxState.textContent='Audio: activo';
+    }
+    if(audioCtx.state==='suspended'){ audioCtx.resume(); if(ctxState) ctxState.textContent='Audio: activo'; }
+  }
+
+  // ======== Modelo de pads ========
+  const pads=Array.from({length:totalPads},(_,i)=>({
+    idx:i,
+    name:'',
+    buffer:null,
+    loop:false,
+    gain:1,
+    rate:1,
+    opcode:'', // PUSH, POP, ADD, SUB, ENQUEUE, DEQUEUE
+    arg:null,  // número (para PUSH/ENQUEUE)
+    playingNodes:new Set(),
+  }));
+
+  let selectedIdx=null;
+
+  // Secuencia de instrucciones (se va rellenando al tocar pads)
+  const program=[]; // cada item: { opcode, arg, srcIdx }
+
+  // Estado de ejecución paso a paso
+  let execPtr=0; let execTimer=null; const STEP_MS=1000; // 1 s por paso
+
+  // Estructuras de datos
+  const stack=[]; // LIFO
+  const queue=[]; // FIFO
+
+  function fmtTime(sec){ if(!isFinite(sec)||sec<=0) return '—'; const m=Math.floor(sec/60); const s=Math.round(sec%60).toString().padStart(2,'0'); return `${m}:${s}`; }
+
+  // ======== UI: Grid ========
+  function renderGrid(){
+    padGrid.innerHTML='';
+    for(let i=0;i<totalPads;i++){
+      const pad=el('button','pad'); pad.dataset.idx=i;
+      pad.innerHTML=`<div class="content">
+        <div class="idx">#${(i+1).toString().padStart(2,'0')}</div>
+        <div class="name" id="nm-${i}">Sin asignar</div>
+        <div class="badges"><span class="badge" id="st-${i}">• inactivo</span></div>
+      </div>`;
+      pad.addEventListener('click',()=>{
+        ensureAudioCtx(); const idx=+pad.dataset.idx;
+        if(editMode && editMode.checked){ selectPad(idx); }
+        else{ triggerPad(idx); }
+      });
+      pad.addEventListener('contextmenu',(e)=>{ e.preventDefault(); selectPad(+pad.dataset.idx); fileInput.click(); });
+      padGrid.appendChild(pad);
+    }
+  }
+  renderGrid();
+
+  function updatePadUI(idx){
+    const p=pads[idx];
+    const nm=$('#nm-'+idx); const st=$('#st-'+idx);
+    if(nm) nm.textContent=p.name||'Sin asignar';
+    if(st) st.textContent=p.buffer?`⏱ ${fmtTime(p.buffer.duration)}`:'• inactivo';
+  }
+
+  function selectPad(idx){
+    selectedIdx=idx; document.querySelectorAll('.pad').forEach(el=>el.classList.remove('selected'));
+    const elPad=document.querySelector(`.pad[data-idx="${idx}"]`); if(elPad) elPad.classList.add('selected');
+    syncSidebar();
+  }
+
+  function syncSidebar(){
+    if(selectedIdx==null) return; const p=pads[selectedIdx];
+    if(selIndexEl) selIndexEl.textContent = `#${selectedIdx+1}`;
+    if(selNameEl) selNameEl.textContent = p.name || 'Sin asignar';
+    if(selDurEl) selDurEl.textContent = p.buffer? fmtTime(p.buffer.duration) : '—';
+    if(gainSlider) gainSlider.value=p.gain; if(rateSlider) rateSlider.value=p.rate; if(loopChk) loopChk.checked=p.loop;
+    if(opcodeSelect) opcodeSelect.value=p.opcode||''; if(argInput) argInput.value = (p.arg??'');
+    if(argRow) argRow.style.display = (p.opcode==='PUSH' || p.opcode==='ENQUEUE')? 'flex':'none';
+  }
+
+  // ======== Audio load/play ========
+  async function decodeFile(file){ const arrayBuf=await file.arrayBuffer(); return await audioCtx.decodeAudioData(arrayBuf); }
+  async function loadFileToPad(file, idx){
+    try{ ensureAudioCtx(); const buffer=await decodeFile(file); const pad=pads[idx]; if(stopOnNew && stopOnNew.checked) stopPad(idx); pad.buffer=buffer; pad.name=file.name; updatePadUI(idx); if(selectedIdx===idx) syncSidebar(); }
+    catch{ alert('No se pudo cargar el audio.'); }
+  }
+
+  function triggerPad(idx){
+    const p=pads[idx];
+    if(!p.buffer){ flashPad(idx,'warn'); return; }
+    ensureAudioCtx();
+    const src=audioCtx.createBufferSource(); src.buffer=p.buffer; src.loop=p.loop; src.playbackRate.value=p.rate; const g=audioCtx.createGain(); g.gain.value=p.gain; src.connect(g).connect(masterGain.node);
+    src.onended=()=>{ p.playingNodes.delete(src); document.querySelector(`.pad[data-idx="${idx}"]`)?.classList.remove('active'); };
+    p.playingNodes.add(src); src.start(0);
+    document.querySelector(`.pad[data-idx="${idx}"]`)?.classList.add('active');
+    flashPad(idx);
+
+    // Registrar instrucción si hay opcode
+    if(p.opcode){
+      const instr = { opcode:p.opcode, arg: (p.opcode==='PUSH'||p.opcode==='ENQUEUE')? Number(p.arg): null, srcIdx: idx };
+      program.push(instr);
+      appendToConsole(formatInstr(instr));
+    }
+  }
+
+  function stopPad(idx){ const p=pads[idx]; p.playingNodes.forEach(n=>{ try{ n.stop(); }catch{} }); p.playingNodes.clear(); document.querySelector(`.pad[data-idx="${idx}"]`)?.classList.remove('active'); }
+  function flashPad(idx,type){ const el=document.querySelector(`.pad[data-idx="${idx}"]`); if(!el) return; const orig=el.style.boxShadow; el.style.boxShadow= type==='warn'?'0 0 0 2px var(--warn) inset':'0 0 0 2px var(--accent-2) inset'; setTimeout(()=> el.style.boxShadow=orig, 160); }
+
+  // ======== Sidebar events ========
+  if(assignBtn) assignBtn.addEventListener('click',()=>{ if(selectedIdx==null){ alert('Selecciona un pad'); return; } fileInput.click(); });
+  if(fileInput) fileInput.addEventListener('change',e=>{ const f=e.target.files?.[0]; if(f && selectedIdx!=null){ loadFileToPad(f, selectedIdx); fileInput.value=''; } });
+  if(previewBtn) previewBtn.addEventListener('click',()=>{ if(selectedIdx!=null) triggerPad(selectedIdx); });
+  if(removeBtn) removeBtn.addEventListener('click',()=>{ if(selectedIdx==null) return; stopPad(selectedIdx); const p=pads[selectedIdx]; Object.assign(p,{buffer:null,name:'',opcode:'',arg:null,loop:false,gain:1,rate:1}); updatePadUI(selectedIdx); syncSidebar(); });
+  if(gainSlider) gainSlider.addEventListener('input',()=>{ if(selectedIdx==null) return; pads[selectedIdx].gain=parseFloat(gainSlider.value); });
+  if(rateSlider) rateSlider.addEventListener('input',()=>{ if(selectedIdx==null) return; pads[selectedIdx].rate=parseFloat(rateSlider.value); });
+  if(loopChk) loopChk.addEventListener('change',()=>{ if(selectedIdx==null) return; pads[selectedIdx].loop=loopChk.checked; });
+  if(opcodeSelect) opcodeSelect.addEventListener('change',()=>{ if(selectedIdx==null) return; const v=opcodeSelect.value; pads[selectedIdx].opcode=v; if(argRow) argRow.style.display=(v==='PUSH'||v==='ENQUEUE')?'flex':'none'; });
+  if(argInput) argInput.addEventListener('input',()=>{ if(selectedIdx==null) return; const n = argInput.value===''? null : Number(argInput.value); pads[selectedIdx].arg = Number.isFinite(n)? n : null; });
+
+  if(globalStop) globalStop.addEventListener('click',()=> pads.forEach((_,i)=> stopPad(i)) );
+  if(clearAll) clearAll.addEventListener('click',()=>{
+    if(!confirm('¿Vaciar todos los pads y programa?')) return;
+    pads.forEach((p,i)=>{ stopPad(i); Object.assign(p,{buffer:null,name:'',opcode:'',arg:null,loop:false,gain:1,rate:1}); updatePadUI(i); });
+    resetExecution(true); clearConsoleBox();
+    clearResultLights();
+  });
+
+  // ======== Consola ========
+  function appendToConsole(text){ consoleBox.textContent += text + "\n"; consoleBox.scrollTop = consoleBox.scrollHeight; }
+  function clearConsoleBox(){ consoleBox.textContent=''; }
+  if(clearConsole) clearConsole.addEventListener('click', clearConsoleBox);
+  function formatInstr(i){ return i.arg==null? `> ${i.opcode}` : `> ${i.opcode} ${i.arg}`; }
+
+  // ======== Visual Stack/Queue ========
+  function renderStack(){
+    stackCol.innerHTML = '<div class="label">Pila (top ↑)</div>';
+    for(let i=0;i<stack.length;i++){
+      const v=stack[i]; const it=el('div','item'); it.textContent=v; stackCol.appendChild(it);
+      requestAnimationFrame(()=> it.classList.add('enter'));
+    }
+  }
+  function pushStack(v){ stack.push(v); renderStack(); }
+  function popStack(){ if(stack.length===0) return null; const v=stack.pop(); const items=stackCol.querySelectorAll('.item'); const last=items[items.length-1]; if(last){ last.classList.add('exit'); setTimeout(renderStack, 320); } else { renderStack(); } return v; }
+
+  function renderQueue(){
+    queueRow.innerHTML='';
+    queue.forEach(v=>{ const it=el('div','item'); it.textContent=v; queueRow.appendChild(it); requestAnimationFrame(()=> it.classList.add('enter')); });
+  }
+  function enqueue(v){ queue.push(v); renderQueue(); }
+  function dequeue(){ if(queue.length===0) return null; const v=queue.shift(); const first=queueRow.querySelector('.item'); if(first){ first.classList.add('exit'); setTimeout(renderQueue, 320); } else { renderQueue(); } return v; }
+
+  // ======== Visual numérica (dos últimas filas) ========
+  function clearResultLights(){
+    const padsEls=document.querySelectorAll('.pad');
+    for(let i=80;i<100;i++) padsEls[i]?.classList.remove('light-green','light-yellow','light-red');
+  }
+
+  function showResultLights(result, lastPadIdx){
+    const padsEls=document.querySelectorAll('.pad');
+    // Limpia sólo las dos últimas filas para que el nuevo resultado reemplace al anterior
+    clearResultLights();
+
+    // Negativo: parpadeo rojo y persistencia en rojo con magnitud
+    if(result < 0){
+      for(let t=0;t<2;t++){
+        setTimeout(()=>{ for(let i=80;i<100;i++) padsEls[i]?.classList.toggle('light-red'); }, t*350);
+      }
+      const val=Math.min(Math.abs(result),99);
+      const tens=Math.floor(val/10), ones=val%10;
+      for(let i=0;i<tens;i++){ setTimeout(()=> padsEls[80+i]?.classList.add('light-red'), 800 + i*90); }
+      for(let j=0;j<ones;j++){ setTimeout(()=> padsEls[90+j]?.classList.add('light-red'), 800 + tens*90 + j*90); }
+      if(Number.isInteger(lastPadIdx)) setTimeout(()=> triggerPad(lastPadIdx), 800 + (tens+ones+1)*90);
+      return;
+    }
+
+    // Positivo (o cero): decenas verdes, unidades amarillas
+    const val=Math.min(result,99);
+    const tens=Math.floor(val/10);
+    const ones=val%10;
+
+    for(let i=0;i<tens;i++){
+      setTimeout(()=> padsEls[80+i]?.classList.add('light-green'), i*90);
+    }
+    for(let j=0;j<ones;j++){
+      setTimeout(()=> padsEls[90+j]?.classList.add('light-yellow'), (tens*90) + j*90);
+    }
+    if(Number.isInteger(lastPadIdx)) setTimeout(()=> triggerPad(lastPadIdx), (tens+ones+1)*90);
+  }
+
+  // ======== Ejecución paso a paso ========
+  function executeOne(){
+    if(execPtr >= program.length){ appendToConsole('— Fin del programa —'); stopStepper(); return; }
+    const instr = program[execPtr++];
+    runInstr(instr);
+  }
+
+  function runInstr(instr){
+    const {opcode, arg, srcIdx} = instr;
+    switch(opcode){
+      case 'PUSH':
+        if(arg==null || !Number.isFinite(arg)) { appendToConsole('! PUSH requiere valor'); break; }
+        appendToConsole(`PUSH ${arg}`);
+        pushStack(arg);
+        break;
+      case 'POP':{
+        const v = popStack(); appendToConsole(`POP ${v==null?'(pila vacía)':v}`); break; }
+      case 'ADD':{
+        const a = popStack(); const b = popStack();
+        if(a==null || b==null){ appendToConsole('! ADD requiere 2 operandos'); if(a!=null) pushStack(a); if(b!=null) pushStack(b); break; }
+        const r = b + a; appendToConsole(`ADD → ${b} + ${a} = ${r}`); pushStack(r);
+        // Visual numérica sólo en ADD/SUB
+        showResultLights(r, srcIdx);
+        break; }
+      case 'SUB':{
+        const a = popStack(); const b = popStack();
+        if(a==null || b==null){ appendToConsole('! SUB requiere 2 operandos'); if(a!=null) pushStack(a); if(b!=null) pushStack(b); break; }
+        const r = b - a; appendToConsole(`SUB → ${b} - ${a} = ${r}`); pushStack(r);
+        // Visual numérica sólo en ADD/SUB
+        showResultLights(r, srcIdx);
+        break; }
+      case 'ENQUEUE':
+        if(arg==null || !Number.isFinite(arg)) { appendToConsole('! ENQUEUE requiere valor'); break; }
+        appendToConsole(`ENQUEUE ${arg}`); enqueue(arg); break;
+      case 'DEQUEUE':{
+        const v = dequeue(); appendToConsole(`DEQUEUE ${v==null?'(cola vacía)':v}`); break; }
+      default:
+        appendToConsole('! Instrucción no válida: '+opcode);
+    }
+  }
+
+  function startStepper(){ if(execTimer) return; playStep.disabled=true; pauseStep.disabled=false; nextStep.disabled=true; execTimer = setInterval(executeOne, STEP_MS); }
+  function stopStepper(){ if(execTimer){ clearInterval(execTimer); execTimer=null; } playStep.disabled=false; pauseStep.disabled=true; nextStep.disabled=false; }
+  function resetExecution(full=false){ stopStepper(); execPtr=0; if(full){ program.length=0; } stack.length=0; queue.length=0; renderStack(); renderQueue(); }
+
+  if(playStep) playStep.addEventListener('click', startStepper);
+  if(pauseStep) pauseStep.addEventListener('click', stopStepper);
+  if(nextStep) nextStep.addEventListener('click', executeOne);
+  if(resetExec) resetExec.addEventListener('click', ()=>{ resetExecution(false); appendToConsole('— Reinicio de ejecución —'); });
+
+  // ======== Otros ========
+  window.addEventListener('pointerdown', ()=> ensureAudioCtx(), { once:true });
+  padGrid.addEventListener('focusin', (e)=>{ const el=e.target.closest('.pad'); if(el){ selectedIdx=+el.dataset.idx; syncSidebar(); } });
+
+  // Inicial
+  renderStack(); renderQueue();
+
+  // ======== Inicializar grid y audio minimal si se necesita ========
+  function initGrid(){
+    // ya se llamó renderGrid();
+  }
+  </script>
+</body>
+</html>
